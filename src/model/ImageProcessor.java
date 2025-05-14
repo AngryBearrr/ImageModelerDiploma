@@ -11,6 +11,8 @@ public class ImageProcessor implements Serializable {
     private static final long serialVersionUID = 2L;
 
     private final Map<String, Image> images = new HashMap<>();
+
+    // UI-модели не Serializable — помечаем transient
     private transient DefaultListModel<String> imagesModel = new DefaultListModel<>();
     private transient DefaultListModel<String> pointsModel = new DefaultListModel<>();
 
@@ -18,7 +20,6 @@ public class ImageProcessor implements Serializable {
     private String activePointName = null;
 
     public ImageProcessor() {
-        // инициализация транзиентных полей
         this.imagesModel = new DefaultListModel<>();
         this.pointsModel = new DefaultListModel<>();
     }
@@ -89,20 +90,27 @@ public class ImageProcessor implements Serializable {
         }
     }
 
+    /**
+     * Сериализация дефолтных полей (сам Image позаботится о BufferedImage).
+     */
     @Serial
     private void writeObject(ObjectOutputStream out) throws IOException {
         out.defaultWriteObject();
     }
 
+    /**
+     * Десериализация + восстановление transient-полей моделей.
+     */
     @Serial
     private void readObject(ObjectInputStream in)
             throws IOException, ClassNotFoundException {
         in.defaultReadObject();
-        // восстанавливаем транзиентные поля
+
         imagesModel = new DefaultListModel<>();
         for (String key : images.keySet()) {
             imagesModel.addElement(key);
         }
+
         pointsModel = new DefaultListModel<>();
         if (activeImageKey != null) {
             for (Point2D p : images.get(activeImageKey).getPoints()) {

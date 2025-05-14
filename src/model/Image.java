@@ -12,6 +12,8 @@ public class Image implements Serializable {
 
     private String imagePath;
     private final List<Point2D> points = new ArrayList<>();
+
+    // BufferedImage не Serializable — помечаем transient
     private transient BufferedImage bufferedImage;
 
     public Image(String imagePath, BufferedImage bufferedImage) {
@@ -47,11 +49,13 @@ public class Image implements Serializable {
     }
 
     /**
-     * Сериализуем изображение в виде PNG-потока.
+     * Ручная сериализация: сначала дефолтные поля,
+     * затем изображение в формате PNG.
      */
     @Serial
     private void writeObject(ObjectOutputStream out) throws IOException {
         out.defaultWriteObject();
+
         if (bufferedImage != null) {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             ImageIO.write(bufferedImage, "png", baos);
@@ -64,11 +68,14 @@ public class Image implements Serializable {
     }
 
     /**
-     * Десериализуем PNG-поток обратно в BufferedImage.
+     * Ручная десериализация: сначала дефолтные поля,
+     * затем чтение PNG-байт обратно в BufferedImage.
      */
     @Serial
-    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+    private void readObject(ObjectInputStream in)
+            throws IOException, ClassNotFoundException {
         in.defaultReadObject();
+
         int length = in.readInt();
         if (length > 0) {
             byte[] bytes = in.readNBytes(length);
