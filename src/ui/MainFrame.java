@@ -73,23 +73,20 @@ public class MainFrame extends JFrame {
         chooser.setDialogType(JFileChooser.OPEN_DIALOG);
         if (chooser.showDialog(this, "Open") == JFileChooser.APPROVE_OPTION) {
             String filePath = chooser.getSelectedFile().getAbsolutePath();
-            try {
-                // Заменили присвоение на вызов метода, который сам инициализирует поле processor
-                getSerializedProcessor(filePath);
 
-                // Обновляем модели списков
-                imagesList.setModel(processor.getImagesModel());
-                pointsList.setModel(processor.getPointsModel());
+            // Загружаем состояние в текущий processor
+            getSerializedProcessor(filePath);
 
-                // Восстанавливаем выделение активного изображения
-                if (processor.activeImageExists()) {
-                    String activeName = processor.getActiveImagePath();
-                    imagesList.setSelectedValue(activeName, true);
-                } else if (processor.getImagesModel().getSize() > 0) {
-                    imagesList.setSelectedIndex(0);
-                }
-            } catch (ClassNotFoundException e) {
-                throw new RuntimeException(e);
+            // Обновляем модели списков
+            imagesList.setModel(processor.getImagesModel());
+            pointsList.setModel(processor.getPointsModel());
+
+            // Восстанавливаем выделение активного изображения
+            if (processor.activeImageExists()) {
+                String activeName = processor.getActiveImagePath();
+                imagesList.setSelectedValue(activeName, true);
+            } else if (processor.getImagesModel().getSize() > 0) {
+                imagesList.setSelectedIndex(0);
             }
         }
     }
@@ -186,21 +183,25 @@ public class MainFrame extends JFrame {
         return panel;
     }
 
-    private void getSerializedProcessor(String filePath) throws ClassNotFoundException{
-        File file = new File(filePath);
-        try (ObjectInputStream is = new ObjectInputStream(new FileInputStream(filePath))){
-            this.processor = (ImageProcessor) is.readObject();
+    private void getSerializedProcessor(String filePath) {
+        try {
+            // 1) читаем новый процессор из файла
+            ImageProcessor loaded = ImageProcessor.load(filePath);
+
+            // 2) заменяем внутреннее состояние старого processor
+            this.processor.replaceWith(loaded);
+
         } catch (FileNotFoundException e) {
             JOptionPane.showMessageDialog(
                     this,
-                    "file does not exist : " + e.getMessage(),
+                    "File does not exist: " + e.getMessage(),
                     "Error",
                     JOptionPane.ERROR_MESSAGE
             );
-        } catch (IOException e) {
+        } catch (IOException | ClassNotFoundException e) {
             JOptionPane.showMessageDialog(
                     this,
-                    "can't access file : " + e.getMessage(),
+                    "Failed to load model: " + e.getMessage(),
                     "Error",
                     JOptionPane.ERROR_MESSAGE
             );

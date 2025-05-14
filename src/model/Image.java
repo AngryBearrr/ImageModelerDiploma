@@ -34,6 +34,7 @@ public class Image implements Serializable {
     }
 
     public boolean addPoint(Point2D newPoint) {
+        // если точка с таким именем уже есть — обновляем координаты
         for (Point2D point : points) {
             if (point.getName().equals(newPoint.getName())) {
                 point.setX(newPoint.getX());
@@ -41,6 +42,7 @@ public class Image implements Serializable {
                 return true;
             }
         }
+        // иначе добавляем новую
         return points.add(newPoint);
     }
 
@@ -50,7 +52,7 @@ public class Image implements Serializable {
 
     /**
      * Ручная сериализация: сначала дефолтные поля,
-     * затем изображение в формате PNG.
+     * затем PNG-байты изображения.
      */
     @Serial
     private void writeObject(ObjectOutputStream out) throws IOException {
@@ -68,8 +70,7 @@ public class Image implements Serializable {
     }
 
     /**
-     * Ручная десериализация: сначала дефолтные поля,
-     * затем чтение PNG-байт обратно в BufferedImage.
+     * Ручная десериализация: читаем PNG-байты обратно в BufferedImage.
      */
     @Serial
     private void readObject(ObjectInputStream in)

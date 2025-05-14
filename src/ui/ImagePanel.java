@@ -1,3 +1,4 @@
+// src/ui/ImagePanel.java
 package ui;
 
 import model.ImageProcessor;
@@ -12,7 +13,7 @@ public class ImagePanel extends JPanel {
     private BufferedImage image;
     private final ImageProcessor processor;
 
-    public ImagePanel(ImageProcessor processor){
+    public ImagePanel(ImageProcessor processor) {
         this.processor = processor;
     }
 
