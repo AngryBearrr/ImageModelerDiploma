@@ -2,6 +2,7 @@ package ui;
 
 import model.ImageProcessor;
 import model.ColmapSFMConstructor;
+import model.OpenCVSFMConstructor;
 import model.Point3D;
 import model.buttonsLogic.MouseClickLogic;
 import model.buttonsLogic.UiLogicHandler;
@@ -99,7 +100,7 @@ public class MainFrame extends JFrame {
         // Логика нажатия
         buildBtn.addActionListener(e -> {
             try {
-                List<Point3D> cloud = ColmapSFMConstructor.reconstructAll(processor);
+                List<Point3D> cloud = OpenCVSFMConstructor.reconstructAll(processor);
                 viewContainer.removeAll();
                 PointCloud3DPanel cloudPanel = new PointCloud3DPanel(cloud);
                 viewContainer.add(cloudPanel, BorderLayout.CENTER);

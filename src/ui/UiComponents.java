@@ -133,9 +133,7 @@ class MyListCellRenderer implements ListCellRenderer<String> {
 
     private Color getColorForIndex(int index) {
         // ваша логика: по индексу выбираем цвет состояния
-        return (index % 3 == 0) ? Color.GREEN
-                : (index % 3 == 1) ? Color.ORANGE
-                : Color.RED;
+        return Color.RED;
     }
 }
 

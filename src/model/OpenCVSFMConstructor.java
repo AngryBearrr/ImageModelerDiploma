@@ -209,7 +209,7 @@ public class OpenCVSFMConstructor {
                 listB.add(new Point(q.getX(), q.getY()));
             }
         }
-        if (listA.size() < 8) {
+        if (listA.size() < 5) {
             throw new RuntimeException("Not enough correspondences");
         }
 
