@@ -1,6 +1,6 @@
-// src/model/ImageProcessor.java
 package model;
 
+import lombok.Getter;
 import javax.swing.DefaultListModel;
 import java.awt.image.BufferedImage;
 import java.io.*;
@@ -12,13 +12,15 @@ import java.util.Map;
 public class ImageProcessor implements Serializable {
     private static final long serialVersionUID = 2L;
 
+    @Getter
     private final Map<String, Image> images = new HashMap<>();
 
-    // UI-модели не сериализуются
+    @Getter
     private transient DefaultListModel<String> imagesModel = new DefaultListModel<>();
+    @Getter
     private transient DefaultListModel<String> pointsModel = new DefaultListModel<>();
 
-    private String activeImageKey = null;
+    private String activeImage = null;
     private String activePointName = null;
 
     public ImageProcessor() {
@@ -37,7 +39,7 @@ public class ImageProcessor implements Serializable {
         if (!images.containsKey(key)) {
             throw new RuntimeException("Image \"" + key + "\" does not exist");
         }
-        activeImageKey = key;
+        activeImage = key;
         activePointName = null;
         pointsModel.clear();
         for (Point2D p : images.get(key).getPoints()) {
@@ -46,46 +48,38 @@ public class ImageProcessor implements Serializable {
     }
 
     public BufferedImage getActiveImage() {
-        if (activeImageKey == null) {
+        if (activeImage == null) {
             throw new IllegalStateException("No active image selected");
         }
-        return images.get(activeImageKey).getBufferedImage();
-    }
-
-    public DefaultListModel<String> getImagesModel() {
-        return imagesModel;
-    }
-
-    public DefaultListModel<String> getPointsModel() {
-        return pointsModel;
+        return images.get(activeImage).getBufferedImage();
     }
 
     public boolean activeImageExists() {
-        return activeImageKey != null;
+        return activeImage != null;
     }
 
     public String getActiveImagePath() {
-        if (activeImageKey == null) {
+        if (activeImage == null) {
             throw new IllegalStateException("No active image selected");
         }
-        return activeImageKey;
+        return activeImage;
     }
 
     /**
      * Возвращает список всех Point2D для активного изображения.
      */
     public List<Point2D> getActiveImagePoints() {
-        if (activeImageKey == null) {
+        if (activeImage == null) {
             return Collections.emptyList();
         }
-        return images.get(activeImageKey).getPoints();
+        return images.get(activeImage).getPoints();
     }
 
     public void addPointToImage(Point2D newPoint) {
-        if (activeImageKey == null) {
+        if (activeImage == null) {
             throw new IllegalStateException("No active image selected");
         }
-        Image img = images.get(activeImageKey);
+        Image img = images.get(activeImage);
         boolean existed = img.addPoint(newPoint);
         if (!existed) {
             pointsModel.addElement(newPoint.getName());
@@ -94,10 +88,10 @@ public class ImageProcessor implements Serializable {
     }
 
     public Point2D getActivePoint() {
-        if (activeImageKey == null || activePointName == null) {
+        if (activeImage == null || activePointName == null) {
             return null;
         }
-        for (Point2D p : images.get(activeImageKey).getPoints()) {
+        for (Point2D p : images.get(activeImage).getPoints()) {
             if (p.getName().equals(activePointName)) {
                 return p;
             }
@@ -106,10 +100,10 @@ public class ImageProcessor implements Serializable {
     }
 
     public void setActivePoint(String pointName) {
-        if (activeImageKey == null) {
+        if (activeImage == null) {
             throw new IllegalStateException("No active image selected");
         }
-        for (Point2D p : images.get(activeImageKey).getPoints()) {
+        for (Point2D p : images.get(activeImage).getPoints()) {
             if (p.getName().equals(pointName)) {
                 activePointName = pointName;
                 return;
@@ -149,8 +143,8 @@ public class ImageProcessor implements Serializable {
         }
 
         pointsModel = new DefaultListModel<>();
-        if (activeImageKey != null) {
-            for (Point2D p : images.get(activeImageKey).getPoints()) {
+        if (activeImage != null) {
+            for (Point2D p : images.get(activeImage).getPoints()) {
                 pointsModel.addElement(p.getName());
             }
         }
@@ -162,7 +156,7 @@ public class ImageProcessor implements Serializable {
         this.images.putAll(other.images);
 
         // 2) скопировать текущий выбор
-        this.activeImageKey = other.activeImageKey;
+        this.activeImage = other.activeImage;
         this.activePointName = other.activePointName;
 
         // 3) восстановить модели списков
@@ -172,10 +166,14 @@ public class ImageProcessor implements Serializable {
         }
 
         pointsModel.clear();
-        if (activeImageKey != null) {
-            for (Point2D p : images.get(activeImageKey).getPoints()) {
+        if (activeImage != null) {
+            for (Point2D p : images.get(activeImage).getPoints()) {
                 pointsModel.addElement(p.getName());
             }
         }
+    }
+
+    public Image getImage(String name){
+        return images.get(name);
     }
 }

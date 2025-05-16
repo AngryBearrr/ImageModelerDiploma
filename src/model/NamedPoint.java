@@ -6,10 +6,10 @@ import java.util.Objects;
 /**
  * Базовый класс точки с единственным общим полем — именем.
  */
-public abstract class Point implements Serializable {
+public abstract class NamedPoint implements Serializable {
     private final String name;
 
-    public Point(String name) {
+    public NamedPoint(String name) {
         this.name = name;
     }
 
@@ -22,7 +22,7 @@ public abstract class Point implements Serializable {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-        Point point = (Point) o;
+        NamedPoint point = (NamedPoint) o;
         return Objects.equals(name, point.name);
     }
 

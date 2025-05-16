@@ -3,9 +3,9 @@ package model;
 /**
  * Двумерная точка с именем и координатами x, y.
  */
-public class Point2D extends Point {
-    private Integer x;
-    private Integer y;
+public class Point2D extends NamedPoint {
+    private double x;
+    private double y;
 
     public Point2D(String name, Integer x, Integer y) {
         super(name);
@@ -13,10 +13,10 @@ public class Point2D extends Point {
         this.y = y;
     }
 
-    public int getX() { return x; }
-    public int getY() { return y; }
-    public void setX(int x){this.x = x;}
-    public void setY(int y){this.y = y;}
+    public double getX() { return x; }
+    public double getY() { return y; }
+    public void setX(double x){this.x = x;}
+    public void setY(double y){this.y = y;}
 
     @Override
     public String toString() {

@@ -1,36 +1,25 @@
-// src/model/Image.java
 package model;
 
+import lombok.Data;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
+@Data
 public class Image implements Serializable {
     private static final long serialVersionUID = 2L;
 
     private String imagePath;
     private final List<Point2D> points = new ArrayList<>();
 
-    // BufferedImage не Serializable — помечаем transient
     private transient BufferedImage bufferedImage;
 
     public Image(String imagePath, BufferedImage bufferedImage) {
         this.imagePath = imagePath;
         this.bufferedImage = bufferedImage;
-    }
-
-    public String getImagePath() {
-        return imagePath;
-    }
-
-    public void setImagePath(String imagePath) {
-        this.imagePath = imagePath;
-    }
-
-    public BufferedImage getBufferedImage() {
-        return bufferedImage;
     }
 
     public boolean addPoint(Point2D newPoint) {
@@ -46,14 +35,6 @@ public class Image implements Serializable {
         return points.add(newPoint);
     }
 
-    public List<Point2D> getPoints() {
-        return points;
-    }
-
-    /**
-     * Ручная сериализация: сначала дефолтные поля,
-     * затем PNG-байты изображения.
-     */
     @Serial
     private void writeObject(ObjectOutputStream out) throws IOException {
         out.defaultWriteObject();
@@ -69,9 +50,6 @@ public class Image implements Serializable {
         }
     }
 
-    /**
-     * Ручная десериализация: читаем PNG-байты обратно в BufferedImage.
-     */
     @Serial
     private void readObject(ObjectInputStream in)
             throws IOException, ClassNotFoundException {
@@ -86,5 +64,18 @@ public class Image implements Serializable {
         } else {
             bufferedImage = null;
         }
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Image image = (Image) o;
+        return Objects.equals(imagePath, image.imagePath) && Objects.equals(points, image.points) && Objects.equals(bufferedImage, image.bufferedImage);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(imagePath);
     }
 }

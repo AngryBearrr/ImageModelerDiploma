@@ -1,6 +1,6 @@
 package model;
 
-public class Point3D extends Point {
+public class Point3D extends NamedPoint {
     private final double x;
     private final double y;
     private final double z;

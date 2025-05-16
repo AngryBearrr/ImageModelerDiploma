@@ -3,36 +3,65 @@ package model;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
+import java.util.logging.*;
 
 public class ColmapSFMConstructor {
+    private static final Logger LOGGER = Logger.getLogger(ColmapSFMConstructor.class.getName());
+
+    /**
+     * Исключение, возникающее при ошибках COLMAP-пайплайна.
+     */
+    public static class ColmapException extends Exception {
+        public ColmapException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
     /**
      * Запускает внешний COLMAP-пайплайн на всех текущих изображениях из ImageProcessor
      * и возвращает список 3D-точек в виде List<Point3D>.
      */
-    public static List<Point3D> reconstructAll(ImageProcessor proc) {
+    public static List<Point3D> reconstructAll(ImageProcessor proc) throws ColmapException {
+        Path workspace = null;
         try {
+            // Проверяем доступность COLMAP
+            checkColmapAvailability();
+
             // 1) Собираем пути к изображениям
-            List<String> imagePaths = Collections.list(proc.getImagesModel().elements());
+            Enumeration<?> elements = proc.getImagesModel().elements();
+            List<String> imagePaths = new ArrayList<>();
+            while (elements.hasMoreElements()) {
+                Object elem = elements.nextElement();
+                if (elem instanceof String) {
+                    imagePaths.add((String) elem);
+                } else {
+                    throw new ColmapException("Unexpected element type in images model: " + elem.getClass(), null);
+                }
+            }
             if (imagePaths.isEmpty()) {
-                throw new RuntimeException("No images to reconstruct");
+                throw new ColmapException("No images to reconstruct", null);
             }
 
             // 2) Создаём временную рабочую папку
-            Path workspace = Files.createTempDirectory("colmap_sfm_");
+            workspace = Files.createTempDirectory("colmap_sfm_");
             Path imagesDir = workspace.resolve("images");
             Files.createDirectory(imagesDir);
 
-            // 3) Копируем туда все картинки
+            // 3) Копируем туда все картинки, проверяя существование
             for (String imgPath : imagePaths) {
                 Path src = Paths.get(imgPath);
+                if (!Files.exists(src) || !Files.isRegularFile(src)) {
+                    throw new ColmapException("Image file does not exist or is not a regular file: " + src, null);
+                }
                 Path dst = imagesDir.resolve(src.getFileName());
                 Files.copy(src, dst, StandardCopyOption.REPLACE_EXISTING);
             }
 
             // Пути для базы данных и результатов
             Path databasePath = workspace.resolve("database.db");
-            Path sparseDir    = workspace.resolve("sparse");
+            Path sparseDir = workspace.resolve("sparse");
             Files.createDirectory(sparseDir);
 
             // 4) Запускаем COLMAP feature_extractor
@@ -70,7 +99,34 @@ public class ColmapSFMConstructor {
             return parseColmapPoints(outputTxt);
 
         } catch (IOException | InterruptedException e) {
-            throw new RuntimeException("COLMAP pipeline error: " + e.getMessage(), e);
+            throw new ColmapException("COLMAP pipeline error: " + e.getMessage(), e);
+        } finally {
+            if (workspace != null) {
+                try {
+                    deleteDirectoryRecursively(workspace);
+                } catch (IOException e) {
+                    LOGGER.log(Level.WARNING, "Failed to delete workspace " + workspace, e);
+                }
+            }
+        }
+    }
+
+    /**
+     * Проверяем доступность команды COLMAP, выполняя `colmap --version`.
+     */
+    private static void checkColmapAvailability() throws IOException, InterruptedException, ColmapException {
+        ProcessBuilder pb = new ProcessBuilder("colmap", "--version");
+        Process proc = pb.start();
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(proc.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                LOGGER.fine("[COLMAP Version] " + line);
+            }
+        }
+        int exit = proc.waitFor();
+        if (exit != 0) {
+            throw new ColmapException("COLMAP not found or returned exit code " + exit, null);
         }
     }
 
@@ -78,7 +134,7 @@ public class ColmapSFMConstructor {
      * Запускает одну команду в subprocess и кидает исключение, если exitCode != 0.
      */
     private static void runCommand(List<String> command, Path workingDir)
-            throws IOException, InterruptedException {
+            throws IOException, InterruptedException, ColmapException {
         ProcessBuilder pb = new ProcessBuilder(command);
         pb.directory(workingDir.toFile());
         pb.redirectErrorStream(true);
@@ -87,13 +143,13 @@ public class ColmapSFMConstructor {
                 new InputStreamReader(proc.getInputStream(), StandardCharsets.UTF_8))) {
             String line;
             while ((line = reader.readLine()) != null) {
-                System.out.println("[COLMAP] " + line);
+                LOGGER.info("[COLMAP] " + line);
             }
         }
         int exit = proc.waitFor();
         if (exit != 0) {
-            throw new RuntimeException(
-                    "Command failed (exit " + exit + "): " + String.join(" ", command)
+            throw new ColmapException(
+                    "Command failed (exit " + exit + "): " + String.join(" ", command), null
             );
         }
     }
@@ -110,7 +166,9 @@ public class ColmapSFMConstructor {
                 line = line.trim();
                 if (line.isEmpty() || line.startsWith("#")) continue;
                 String[] tok = line.split("\\s+");
-                // формат: POINT3D_ID X Y Z R G B ERROR TRACK_LENGTH [TRACK...]
+                if (tok.length < 4) {
+                    throw new IOException("Invalid COLMAP points file format at line: " + line);
+                }
                 String   id = tok[0];
                 double   x  = Double.parseDouble(tok[1]);
                 double   y  = Double.parseDouble(tok[2]);
@@ -119,5 +177,25 @@ public class ColmapSFMConstructor {
             }
         }
         return points;
+    }
+
+    /**
+     * Рекурсивно удаляет директорию и все её содержимое.
+     */
+    private static void deleteDirectoryRecursively(Path path) throws IOException {
+        Files.walkFileTree(path, new SimpleFileVisitor<Path>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
+                    throws IOException {
+                Files.delete(file);
+                return FileVisitResult.CONTINUE;
+            }
+            @Override
+            public FileVisitResult postVisitDirectory(Path dir, IOException exc)
+                    throws IOException {
+                Files.delete(dir);
+                return FileVisitResult.CONTINUE;
+            }
+        });
     }
 }
