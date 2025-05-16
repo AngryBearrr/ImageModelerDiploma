@@ -17,13 +17,11 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Collections;
-import java.util.Enumeration;
 
 import org.opencv.core.Point;
-import org.opencv.utils.Converters;
 
 
-public class SFMConstructor {
+public class OpenCVSFMConstructor {
     static {
         System.load("E:\\OpenCV\\opencv\\build\\java\\x64\\opencv_java4110.dll");
     }

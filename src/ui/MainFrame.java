@@ -1,7 +1,7 @@
 package ui;
 
 import model.ImageProcessor;
-import model.SFMConstructor;
+import model.ColmapSFMConstructor;
 import model.Point3D;
 import model.buttonsLogic.MouseClickLogic;
 import model.buttonsLogic.UiLogicHandler;
@@ -15,8 +15,9 @@ import java.awt.image.BufferedImage;
 import java.io.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public class MainFrame extends JFrame {
     private ImageProcessor processor = new ImageProcessor();
@@ -29,6 +30,9 @@ public class MainFrame extends JFrame {
     private final JList<String> imagesList = new JList<>(processor.getImagesModel());
 
     private final MouseClickLogic clickLogic = new MouseClickLogic(processor, imagePanel);
+
+    private final Map<String, Status> pointStatusMap = new LinkedHashMap<>();
+    private final Map<String, Status> imageStatusMap = new LinkedHashMap<>();
 
     public MainFrame() {
         super("Image Selection Window");
@@ -76,17 +80,26 @@ public class MainFrame extends JFrame {
     }
 
     private JPanel createSolveTab() {
-        JPanel solvePanel = new JPanel(new BorderLayout());
+        // Используем ваш MyPanel для отступов
+        MyPanel solvePanel = new MyPanel(new BorderLayout(), 10);
+        solvePanel.setBackground(Palette.DARKEST_GREY);
 
-        JButton buildBtn = new JButton("Build Solution");
-        solvePanel.add(buildBtn, BorderLayout.NORTH);
+        // Сверху тулбар, как везде
+        MyToolbar toolbar = new MyToolbar();
+        // Кнопка в стиле остальных навигационных
+        MyButton buildBtn = new MyButton("Build Solution");
+        toolbar.add(buildBtn);
+        solvePanel.add(toolbar, BorderLayout.NORTH);
 
+        // Контейнер, куда вставится 3D-вид
         JPanel viewContainer = new JPanel(new BorderLayout());
+        viewContainer.setBackground(Palette.DARK_GREY);
         solvePanel.add(viewContainer, BorderLayout.CENTER);
 
+        // Логика нажатия
         buildBtn.addActionListener(e -> {
             try {
-                List<Point3D> cloud = SFMConstructor.reconstructAll(processor);
+                List<Point3D> cloud = ColmapSFMConstructor.reconstructAll(processor);
                 viewContainer.removeAll();
                 PointCloud3DPanel cloudPanel = new PointCloud3DPanel(cloud);
                 viewContainer.add(cloudPanel, BorderLayout.CENTER);
@@ -95,7 +108,7 @@ public class MainFrame extends JFrame {
             } catch (RuntimeException ex) {
                 String msg = ex.getMessage().contains("No valid initial image pair")
                         ? "Не удалось найти пару изображений с достаточным числом общих точек.\n" +
-                        "Убедитесь, что вы пометили хотя бы 8 совпадающих точек на двух разных изображениях."
+                        "Отметьте хотя бы 8 совпадающих точек на двух изображениях."
                         : ex.getMessage();
                 JOptionPane.showMessageDialog(
                         MainFrame.this,
