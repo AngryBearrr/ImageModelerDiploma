@@ -17,20 +17,56 @@ public class OpenCVSFMConstructor {
         System.load("E:\\OpenCV\\opencv\\build\\java\\x64\\opencv_java4110.dll");
     }
 
-    private static Point pointFromPoint2D(Point2D point){
+    private static Point pointFromPoint2D(Point2D point) {
         return new Point(point.getX(), point.getY());
     }
 
-    private static Point3 point3FromPoint3D(Point3D point){
-        return new Point3 (point.getX(), point.getY(), point.getZ());
+    private static Point3 point3FromPoint3D(Point3D point) {
+        return new Point3(point.getX(), point.getY(), point.getZ());
     }
 
-    private static MatOfPoint2f MatOfPoints2fFromPointsList(List<Point2D> points){
+    private static MatOfPoint2f MatOfPoints2fFromPointsList(List<Point2D> points) {
         Point[] point2f = new Point[points.size()];
-        for (int i = 0; i < points.size(); i++){
+        for (int i = 0; i < points.size(); i++) {
             point2f[i] = new Point(points.get(i).getX(), points.get(i).getY());
         }
         return new MatOfPoint2f(point2f);
+    }
+
+    /**
+     * Нормализует точки в нормированные координаты изображения (x-cx)/fx, (y-cy)/fy.
+     */
+    private static MatOfPoint2f normalizePoints(List<Point2D> points, Mat K) {
+        double fx = K.get(0, 0)[0];
+        double fy = K.get(1, 1)[0];
+        double cx = K.get(0, 2)[0];
+        double cy = K.get(1, 2)[0];
+        Point[] normPts = new Point[points.size()];
+        for (int i = 0; i < points.size(); i++) {
+            Point2D p = points.get(i);
+            double x = (p.getX() - cx) / fx;
+            double y = (p.getY() - cy) / fy;
+            normPts[i] = new Point(x, y);
+        }
+        return new MatOfPoint2f(normPts);
+    }
+
+    /**
+     * Оценивает матрицу камеры K, используя простую аппроксимацию:
+     * f = 0.8 * max(width, height), центр в середине изображения.
+     */
+    private static Mat estimateCameraMatrix(BufferedImage img) {
+        int w = img.getWidth();
+        int h = img.getHeight();
+        double focal = 0.8 * Math.max(w, h);
+        double cx = w / 2.0;
+        double cy = h / 2.0;
+        Mat K = Mat.eye(3, 3, CvType.CV_64F);
+        K.put(0, 0, focal);
+        K.put(1, 1, focal);
+        K.put(0, 2, cx);
+        K.put(1, 2, cy);
+        return K;
     }
 
     /**
@@ -66,8 +102,7 @@ public class OpenCVSFMConstructor {
                 // Если меньше 5 — пропускаем
                 if (commonA.size() < 5) continue;
 
-                // 3) Аппроксимация K для обоих изображений (они одинаковые по размеру)
-                proc.setActiveImage(keyA);
+                // 3) Аппроксимация K для обоих изображений
                 BufferedImage img = proc.getActiveImage();
                 Mat K = estimateCameraMatrix(img);
                 // Нормализуем через K^{-1}: (u-cx)/fx, (v-cy)/fy
@@ -100,10 +135,9 @@ public class OpenCVSFMConstructor {
         return best;
     }
 
-
-//    private static List<Point3D> reconstructAll(ImageProcessor processor){
-//
-//    }
+    //    private static List<Point3D> reconstructAll(ImageProcessor processor){
+    //        //...
+    //    }
 
 }
 

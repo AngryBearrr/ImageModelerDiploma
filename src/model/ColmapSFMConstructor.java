@@ -71,10 +71,11 @@ public class ColmapSFMConstructor {
                     "--image_path",    imagesDir.toString()
             ), workspace);
 
-            // 5) Запускаем COLMAP exhaustive_matcher
+            // 5) Запускаем COLMAP exhaustive_matcher с min_num_inliers=5
             runCommand(Arrays.asList(
                     "colmap", "exhaustive_matcher",
-                    "--database_path", databasePath.toString()
+                    "--database_path", databasePath.toString(),
+                    "--TwoViewGeometry.min_num_inliers", "5"
             ), workspace);
 
             // 6) Запускаем COLMAP mapper (incremental SfM)
