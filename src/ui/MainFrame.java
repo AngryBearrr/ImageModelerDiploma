@@ -1,8 +1,7 @@
 package ui;
 
 import model.ImageProcessor;
-import model.ColmapSFMConstructor;
-//import model.OpenCVSFMConstructor;
+import model.OpenCVSFMConstructor;
 import model.Point3D;
 import model.buttonsLogic.MouseClickLogic;
 import model.buttonsLogic.UiLogicHandler;
@@ -22,6 +21,7 @@ import java.util.Map;
 
 public class MainFrame extends JFrame {
     private ImageProcessor processor = new ImageProcessor();
+    private PointCloud3DPanel cloudPanel; // панель для облака точек
     private String fileSavePath = null;
     private final CardLayout cardLayout = new CardLayout();
     private final JPanel mainPanel = new JPanel(cardLayout);
@@ -31,7 +31,6 @@ public class MainFrame extends JFrame {
     private final JList<String> imagesList = new JList<>(processor.getImagesModel());
 
     private final MouseClickLogic clickLogic = new MouseClickLogic(processor, imagePanel);
-
     private final Map<String, Status> pointStatusMap = new LinkedHashMap<>();
     private final Map<String, Status> imageStatusMap = new LinkedHashMap<>();
 
@@ -86,7 +85,9 @@ public class MainFrame extends JFrame {
 
         MyToolbar toolbar = new MyToolbar();
         MyButton buildBtn = new MyButton("Build Solution");
+        MyButton scaleBtn = new MyButton("Scale");
         toolbar.add(buildBtn);
+        toolbar.add(scaleBtn);
         solvePanel.add(toolbar, BorderLayout.NORTH);
 
         JPanel viewContainer = new JPanel(new BorderLayout());
@@ -95,16 +96,16 @@ public class MainFrame extends JFrame {
 
         buildBtn.addActionListener(e -> {
             try {
-                List<Point3D> cloud = ColmapSFMConstructor.reconstructAll(processor);
+                List<Point3D> cloud = OpenCVSFMConstructor.reconstructAll(processor);
                 viewContainer.removeAll();
-                PointCloud3DPanel cloudPanel = new PointCloud3DPanel(cloud);
+                cloudPanel = new PointCloud3DPanel(cloud);
                 viewContainer.add(cloudPanel, BorderLayout.CENTER);
                 viewContainer.revalidate();
                 viewContainer.repaint();
             } catch (RuntimeException ex) {
                 String msg = ex.getMessage().contains("No valid initial image pair")
                         ? "Не удалось найти пару изображений с достаточным числом общих точек.\n" +
-                        "Отметьте хотя бы 8 совпадающих точек на двух изображениях."
+                        "Отметьте хотя бы 5 совпадающих точек на двух изображениях."
                         : ex.getMessage();
                 JOptionPane.showMessageDialog(
                         MainFrame.this,
@@ -112,8 +113,28 @@ public class MainFrame extends JFrame {
                         "Ошибка реконструкции",
                         JOptionPane.ERROR_MESSAGE
                 );
-            } catch (ColmapSFMConstructor.ColmapException ex) {
-                throw new RuntimeException(ex);
+            }
+        });
+
+        scaleBtn.addActionListener(evt -> {
+            if (cloudPanel == null) return;
+            String input = JOptionPane.showInputDialog(
+                    MainFrame.this,
+                    "Enter scale factor:",
+                    cloudPanel.getScaleFactor()
+            );
+            if (input != null) {
+                try {
+                    double factor = Double.parseDouble(input);
+                    cloudPanel.setScaleFactor(factor);
+                } catch (NumberFormatException ex) {
+                    JOptionPane.showMessageDialog(
+                            MainFrame.this,
+                            "Invalid number format",
+                            "Error",
+                            JOptionPane.ERROR_MESSAGE
+                    );
+                }
             }
         });
 
@@ -170,22 +191,14 @@ public class MainFrame extends JFrame {
     private JPanel createSidePanel() {
         JPanel container = new JPanel(new GridLayout(2, 1, 0, 0));
         container.setPreferredSize(new Dimension(300, 0));
-        // Images list panel
         container.add(createListPanel(
                 imagesList,
                 e -> UiLogicHandler.addImage(this, processor, imagePanel),
                 new ImageIcon(getClass().getResource("/resources/imageIcon.png"))
         ));
-        // Points list panel with model refresh
         container.add(createListPanel(
                 pointsList,
-                e -> {
-                    UiLogicHandler.addPoint(this, processor, imagePanel);
-                    // Обновляем модель списка после добавления точки
-                    pointsList.setModel(processor.getPointsModel());
-                    pointsList.revalidate();
-                    pointsList.repaint();
-                },
+                e -> UiLogicHandler.addPoint(this, processor, imagePanel),
                 new ImageIcon(getClass().getResource("/resources/pointIcon.png"))
         ));
         return container;

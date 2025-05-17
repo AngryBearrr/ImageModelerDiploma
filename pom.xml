@@ -19,13 +19,23 @@
             <artifactId>javacv</artifactId>
             <version>1.5.11</version>
         </dependency>
-
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <version>1.18.38</version>
             <scope>provided</scope>
         </dependency>
+        <dependency>
+            <groupId>org.boofcv</groupId>
+            <artifactId>boofcv-core</artifactId>
+            <version>0.40</version>
+        </dependency>
+        <dependency>
+            <groupId>org.boofcv</groupId>
+            <artifactId>boofcv-feature</artifactId>
+            <version>0.40</version>
+        </dependency>
+
     </dependencies>
 
 </project>

@@ -7,30 +7,46 @@ import java.awt.*;
 import java.awt.event.*;
 import java.util.List;
 
-// Если ваш Point3D в другом пакете, исправьте импорт
-// import model.Point3D;
+/**
+ * Панель для отображения облака точек с возможностью зума, вращения камеры,
+ * перспективной проекции, плоскостью, осями координат и масштабированием точек.
+ */
+public class PointCloud3DPanel extends JPanel implements MouseWheelListener {
+    private final List<Point3D> cloud;
 
-public class PointCloud3DPanel extends JPanel {
-    private final List<Point3D> points;
-    private double fov = 800;       // «фокусное расстояние» – регулирует глубину перспективы
-    private double rotX = 0, rotY = 0;  // углы поворота модели
+    // Зум и шаг зума
+    private double zoom = 1.0;
+    private static final double ZOOM_STEP = 1.1;
 
-    public PointCloud3DPanel(List<Point3D> points) {
-        this.points = points;
+    // Углы вращения камеры
+    private double yaw = 0;   // вокруг Y
+    private double pitch = 0; // вокруг X
+    private Point lastDrag;
+
+    // Масштаб координат точек
+    private double scaleFactor = 1.0;
+
+    // Параметры перспективы
+    private double focalLength = 1000.0;    // фокусное расстояние
+    private double cameraDistance = 1000.0; // базовая глубина камеры
+
+    public PointCloud3DPanel(List<Point3D> cloud) {
+        this.cloud = cloud;
         setBackground(Color.BLACK);
-        // Обработчик мыши для вращения модели
+        addMouseWheelListener(this);
         MouseAdapter ma = new MouseAdapter() {
-            private Point prev;
             @Override
             public void mousePressed(MouseEvent e) {
-                prev = e.getPoint();
+                lastDrag = e.getPoint();
             }
             @Override
             public void mouseDragged(MouseEvent e) {
-                Point cur = e.getPoint();
-                rotY += (cur.x - prev.x) * 0.01;
-                rotX += (cur.y - prev.y) * 0.01;
-                prev = cur;
+                Point p = e.getPoint();
+                int dx = p.x - lastDrag.x;
+                int dy = p.y - lastDrag.y;
+                yaw   += dx * 0.01;
+                pitch += dy * 0.01;
+                lastDrag = p;
                 repaint();
             }
         };
@@ -38,48 +54,113 @@ public class PointCloud3DPanel extends JPanel {
         addMouseMotionListener(ma);
     }
 
+    public void setScaleFactor(double scaleFactor) {
+        this.scaleFactor = scaleFactor;
+        repaint();
+    }
+
+    public double getScaleFactor() {
+        return scaleFactor;
+    }
+
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
-        Graphics2D g2 = (Graphics2D) g;
-        g2.setColor(Color.WHITE);
-        int w = getWidth(), h = getHeight();
-        int cx = w/2, cy = h/2;
+        Graphics2D g2 = (Graphics2D) g.create();
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-        // Вспомогательные матрицы вращения по X и Y
-        double sinX = Math.sin(rotX), cosX = Math.cos(rotX);
-        double sinY = Math.sin(rotY), cosY = Math.cos(rotY);
+        int w = getWidth();
+        int h = getHeight();
+        g2.translate(w / 2.0, h / 2.0);
+        g2.scale(zoom, zoom);
 
-        for (Point3D p : points) {
-            // 1) Поворот вокруг осей X и Y
-            double x = p.getX(), y = p.getY(), z = p.getZ();
-            // сначала вокруг X
-            double y1 = y * cosX - z * sinX;
-            double z1 = y * sinX + z * cosX;
-            // затем вокруг Y
-            double x2 = x * cosY + z1 * sinY;
-            double z2 = -x * sinY + z1 * cosY;
+        drawGrid(g2);
+        drawAxes(g2);
+        drawPoints(g2);
 
-            // 2) Перспективная проекция
-            double scale = fov / (fov + z2);
-            int sx = cx + (int) Math.round(x2 * scale);
-            int sy = cy - (int) Math.round(y1 * scale);
+        g2.dispose();
+    }
 
-            // 3) Рисуем точку
-            int r = 4;  // радиус круга
-            g2.fillOval(sx - r/2, sy - r/2, r, r);
+    private void drawGrid(Graphics2D g2) {
+        g2.setColor(new Color(50, 50, 50));
+        int gridSize = 500;
+        int step = 50;
+        for (int x = -gridSize; x <= gridSize; x += step) {
+            drawLine3D(g2, x, 0, -gridSize, x, 0, gridSize);
+        }
+        for (int z = -gridSize; z <= gridSize; z += step) {
+            drawLine3D(g2, -gridSize, 0, z, gridSize, 0, z);
         }
     }
 
-    // Точка входа: создаём окно и добавляем наш панель
-    public static void showPointCloud(List<Point3D> cloud) {
-        SwingUtilities.invokeLater(() -> {
-            JFrame frame = new JFrame("3D Point Cloud Viewer");
-            frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-            frame.setSize(800, 600);
-            frame.setLocationRelativeTo(null);
-            frame.add(new PointCloud3DPanel(cloud));
-            frame.setVisible(true);
-        });
+    private void drawAxes(Graphics2D g2) {
+        Stroke orig = g2.getStroke();
+        g2.setStroke(new BasicStroke(2));
+        // X axis - red
+        g2.setColor(Color.RED);
+        drawLine3D(g2, 0, 0, 0, 200, 0, 0);
+        // Y axis - green
+        g2.setColor(Color.GREEN);
+        drawLine3D(g2, 0, 0, 0, 0, 200, 0);
+        // Z axis - blue
+        g2.setColor(Color.BLUE);
+        drawLine3D(g2, 0, 0, 0, 0, 0, 200);
+        g2.setStroke(orig);
+    }
+
+    private void drawPoints(Graphics2D g2) {
+        g2.setColor(Color.WHITE);
+        int size = 4;
+        for (Point3D p3 : cloud) {
+            double x = p3.getX() * scaleFactor;
+            double y = p3.getY() * scaleFactor;
+            double z = p3.getZ() * scaleFactor;
+            Point p = project(x, y, z);
+            g2.fillOval(p.x - size / 2, p.y - size / 2, size, size);
+        }
+    }
+
+    private void drawLine3D(Graphics2D g2,
+                            double x1, double y1, double z1,
+                            double x2, double y2, double z2) {
+        Point p1 = project(x1, y1, z1);
+        Point p2 = project(x2, y2, z2);
+        g2.drawLine(p1.x, p1.y, p2.x, p2.y);
+    }
+
+    /**
+     * Проецирует 3D-точку с учетом вращения и перспективы.
+     */
+    private Point project(double x, double y, double z) {
+        // Вращение вокруг X (pitch)
+        double cosP = Math.cos(pitch), sinP = Math.sin(pitch);
+        double y1 = y * cosP - z * sinP;
+        double z1 = y * sinP + z * cosP;
+        // Вращение вокруг Y (yaw)
+        double cosY = Math.cos(yaw), sinY = Math.sin(yaw);
+        double x2 = x * cosY + z1 * sinY;
+        double z2 = -x * sinY + z1 * cosY;
+
+        // Перспективная проекция
+        double depth = z2 + cameraDistance;
+        if (depth < 1e-3) depth = 1e-3;
+        double px = x2 * (focalLength / depth);
+        double py = -y1 * (focalLength / depth);
+
+        int sx = (int) Math.round(px);
+        int sy = (int) Math.round(py);
+        return new Point(sx, sy);
+    }
+
+    @Override
+    public void mouseWheelMoved(MouseWheelEvent e) {
+        int notches = e.getWheelRotation();
+        if (notches < 0) {
+            zoom *= Math.pow(ZOOM_STEP, -notches);
+        } else {
+            zoom /= Math.pow(ZOOM_STEP, notches);
+        }
+        zoom = Math.max(0.1, Math.min(zoom, 10));
+        repaint();
     }
 }
