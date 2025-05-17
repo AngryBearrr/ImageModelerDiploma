@@ -11,205 +11,284 @@ import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/**
+ * Класс для Incremental SFM без ручной нормализации,
+ * с исправленной триангуляцией (унификация типов в CV_32F).
+ */
 public class OpenCVSFMConstructor {
-
     static {
         System.load("E:\\OpenCV\\opencv\\build\\java\\x64\\opencv_java4110.dll");
     }
 
+    public static final List<Point3> debugPoints = new ArrayList<>();
+    public static final List<Point3> debugCameras = new ArrayList<>();
 
-
-    private static Point pointFromPoint2D(Point2D point) {
-        return new Point(point.getX(), point.getY());
-    }
-
-    private static Point3 point3FromPoint3D(Point3D point) {
-        return new Point3(point.getX(), point.getY(), point.getZ());
-    }
-
-    private static MatOfPoint2f MatOfPoints2fFromPointsList(List<Point2D> points) {
-        Point[] point2f = new Point[points.size()];
-        for (int i = 0; i < points.size(); i++) {
-            point2f[i] = new Point(points.get(i).getX(), points.get(i).getY());
-        }
-        return new MatOfPoint2f(point2f);
-    }
-
-    /**
-     * Нормализует точки в нормированные координаты изображения (x-cx)/fx, (y-cy)/fy.
-     */
-    private static MatOfPoint2f normalizePoints(List<Point2D> points, Mat K) {
-        double fx = K.get(0, 0)[0];
-        double fy = K.get(1, 1)[0];
-        double cx = K.get(0, 2)[0];
-        double cy = K.get(1, 2)[0];
-        Point[] normPts = new Point[points.size()];
-        for (int i = 0; i < points.size(); i++) {
-            Point2D p = points.get(i);
-            double x = (p.getX() - cx) / fx;
-            double y = (p.getY() - cy) / fy;
-            normPts[i] = new Point(x, y);
-        }
-        return new MatOfPoint2f(normPts);
-    }
-
-    /**
-     * Оценивает матрицу камеры K, используя простую аппроксимацию:
-     * f = 0.8 * max(width, height), центр в середине изображения.
-     */
     private static Mat estimateCameraMatrix(BufferedImage img) {
         int w = img.getWidth();
         int h = img.getHeight();
-        double focal = 0.8 * Math.max(w, h);
-        double cx = w / 2.0;
-        double cy = h / 2.0;
+        double f = 1.2 * Math.max(w, h);
+
         Mat K = Mat.eye(3, 3, CvType.CV_64F);
-        K.put(0, 0, focal);
-        K.put(1, 1, focal);
-        K.put(0, 2, cx);
-        K.put(1, 2, cy);
+        K.put(0, 0, f);
+        K.put(1, 1, f);
+        K.put(0, 2, w / 2.0);
+        K.put(1, 2, h / 2.0);
         return K;
     }
 
-    /**
-     * Ищет пару изображений с наибольшим числом inlier-соответствий
-     * по 5-точечному алгоритму Essential+RANSAC.
-     */
-    private static ImagePair findBestPair5(ImageProcessor proc) {
-        ImagePair best = new ImagePair();
-        // получаем список ключей (имён) всех изображений
+    private static MatOfPoint2f mat2f(List<Point2D> list) {
+        Point[] arr = new Point[list.size()];
+        for (int i = 0; i < list.size(); i++) {
+            Point2D p = list.get(i);
+            arr[i] = new Point(p.getX(), p.getY());
+        }
+        return new MatOfPoint2f(arr);
+    }
+
+    private static Mat buildProjection(Mat K, Mat R, Mat t) {
+        Mat Rt = new Mat(3, 4, CvType.CV_64F);
+        R.copyTo(Rt.colRange(0, 3));
+        t.copyTo(Rt.col(3));
+
+        Mat P = new Mat();
+        Core.gemm(K, Rt, 1, new Mat(), 0, P);
+        return P;
+    }
+
+    private static Point3 cameraCenter(Mat R, Mat t) {
+        Mat Rt = new Mat();
+        Core.transpose(R, Rt);
+
+        Mat c = new Mat();
+        Core.gemm(Rt, t, -1, new Mat(), 0, c);
+        double x = c.get(0, 0)[0];
+        double y = c.get(1, 0)[0];
+        double z = c.get(2, 0)[0];
+        return new Point3(x, y, z);
+    }
+
+    public static List<Point3D> reconstructAll(ImageProcessor proc) {
+        debugPoints.clear();
+        debugCameras.clear();
+
+        // 1) Выбор базовой пары
+        ImagePair pair = findBestPair(proc);
+        proc.setActiveImage(pair.getImage1());
+        List<Point2D> pts1 = proc.getActiveImagePoints();
+        proc.setActiveImage(pair.getImage2());
+        List<Point2D> pts2 = proc.getActiveImagePoints();
+
+        // 2) Поиск общих точек
+        Map<String, Point2D> map2 = pts2.stream()
+                .collect(Collectors.toMap(Point2D::getName, Function.identity()));
+
+        List<Point2D> common1 = new ArrayList<>();
+        List<Point2D> common2 = new ArrayList<>();
+        List<String> names = new ArrayList<>();
+        for (Point2D p : pts1) {
+            Point2D q = map2.get(p.getName());
+            if (q != null) {
+                common1.add(p);
+                common2.add(q);
+                names.add(p.getName());
+            }
+        }
+        if (common1.size() < 5) {
+            throw new RuntimeException("Not enough correspondences for initial pair");
+        }
+
+        // 3) Оценка K и Essential
+        Mat K = estimateCameraMatrix(proc.getImage(pair.getImage1()).getBufferedImage());
+        double focal = K.get(0, 0)[0];
+        Point pp = new Point(K.get(0, 2)[0], K.get(1, 2)[0]);
+
+        MatOfPoint2f m1 = mat2f(common1);
+        MatOfPoint2f m2f = mat2f(common2);
+
+        Mat maskE = new Mat();
+        Mat E = Calib3d.findEssentialMat(
+                m1, m2f,
+                focal, pp,
+                Calib3d.RANSAC,
+                0.999,
+                1.0,
+                10000,
+                maskE
+        );
+
+        Mat R = new Mat();
+        Mat t = new Mat();
+        Calib3d.recoverPose(E, m1, m2f, K, R, t, maskE);
+
+        // 4) Триангуляция начального облака в CV_32F
+        Mat P1 = buildProjection(K, Mat.eye(3, 3, CvType.CV_64F), new Mat(3, 1, CvType.CV_64F));
+        Mat P2 = buildProjection(K, R, t);
+
+        Mat P1_32 = new Mat();
+        Mat P2_32 = new Mat();
+        P1.convertTo(P1_32, CvType.CV_32F);
+        P2.convertTo(P2_32, CvType.CV_32F);
+
+        MatOfPoint2f m1f = new MatOfPoint2f();
+        MatOfPoint2f m2f32 = new MatOfPoint2f();
+        m1.convertTo(m1f, CvType.CV_32F);
+        m2f.convertTo(m2f32, CvType.CV_32F);
+
+        Mat pts4d = new Mat();
+        Calib3d.triangulatePoints(P1_32, P2_32, m1f, m2f32, pts4d);
+
+        Map<String, Point3D> cloudMap = new LinkedHashMap<>();
+        for (int i = 0; i < pts4d.cols(); i++) {
+            double w4 = pts4d.get(3, i)[0];
+            double x = pts4d.get(0, i)[0] / w4;
+            double y = pts4d.get(1, i)[0] / w4;
+            double z = pts4d.get(2, i)[0] / w4;
+
+            Point3D p3 = new Point3D(names.get(i), x, y, z);
+            cloudMap.put(names.get(i), p3);
+            debugPoints.add(new Point3(x, y, z));
+        }
+        debugCameras.add(new Point3(0, 0, 0));
+        debugCameras.add(cameraCenter(R, t));
+
+        // 5) Инкрементальная оценка PnP + триангуляция новых точек
         List<String> keys = Collections.list(proc.getImagesModel().elements());
+        for (String key : keys) {
+            if (key.equals(pair.getImage1()) || key.equals(pair.getImage2())) {
+                continue;
+            }
 
-        for (int i = 0; i < keys.size() - 1; i++) {
-            for (int j = i + 1; j < keys.size(); j++) {
-                String keyA = keys.get(i), keyB = keys.get(j);
+            proc.setActiveImage(key);
 
-                // 1) Собираем списки разметки
-                proc.setActiveImage(keyA);
-                List<Point2D> ptsA = proc.getActiveImagePoints();
-                proc.setActiveImage(keyB);
-                List<Point2D> ptsB = proc.getActiveImagePoints();
+            // --- Сбор соответствий 3D->2D ---
+            List<Point3> objPts = new ArrayList<>();
+            List<Point> imgPts = new ArrayList<>();
+            List<String> trackNames = new ArrayList<>();
 
-                // 2) Фильтруем только общие точки по имени
-                Map<String,Point2D> mapB = ptsB.stream()
-                        .collect(Collectors.toMap(Point2D::getName, Function.identity()));
-                List<Point2D> commonA = new ArrayList<>(), commonB = new ArrayList<>();
-                for (Point2D p : ptsA) {
-                    Point2D q = mapB.get(p.getName());
-                    if (q != null) {
-                        commonA.add(p);
-                        commonB.add(q);
+            for (Map.Entry<String, Point3D> entry : cloudMap.entrySet()) {
+                String nm = entry.getKey();
+                for (Point2D ip : proc.getActiveImagePoints()) {
+                    if (ip.getName().equals(nm)) {
+                        Point3D cp = entry.getValue();
+                        objPts.add(new Point3(cp.getX(), cp.getY(), cp.getZ()));
+                        imgPts.add(new Point(ip.getX(), ip.getY()));
+                        trackNames.add(nm);
+                        break;
                     }
                 }
-                // Если меньше 5 — пропускаем
-                if (commonA.size() < 5) continue;
+            }
 
-                // 3) Аппроксимация K для обоих изображений
-                BufferedImage img = proc.getActiveImage();
-                Mat K = estimateCameraMatrix(img);
-                // Нормализуем через K^{-1}: (u-cx)/fx, (v-cy)/fy
-                MatOfPoint2f mA = normalizePoints(commonA, K);
-                MatOfPoint2f mB = normalizePoints(commonB, K);
+            if (objPts.size() < 4) continue;
 
-                // 4) Оцениваем Essential-матрицу и RANSAC-маску
-                Mat mask = new Mat();
-                Mat E = Calib3d.findEssentialMat(
-                        mA,                    // MatOfPoint2f, ваши нормированные точки A
-                        mB,                    // MatOfPoint2f, ваши нормированные точки B
-                        K,                     // Mat камеры
-                        Calib3d.RANSAC,        // метод
-                        0.99,                  // confidence
-                        1.0,                   // threshold в нормированных coords
-                        10000,
-                        mask                   // выходная маска inliers
+            Mat rvec = new Mat();
+            Mat tvec = new Mat();
+            Calib3d.solvePnPRansac(
+                    new MatOfPoint3f(objPts.toArray(new Point3[0])),
+                    new MatOfPoint2f(imgPts.toArray(new Point[0])),
+                    K,
+                    new MatOfDouble(),
+                    rvec,
+                    tvec
+            );
+
+            Mat Rn = new Mat();
+            Calib3d.Rodrigues(rvec, Rn);
+            debugCameras.add(cameraCenter(Rn, tvec));
+
+            // --- Триангуляция новых точек ---
+            Mat Pn = buildProjection(K, Rn, tvec);
+            Mat Pn_32 = new Mat();
+            Pn.convertTo(Pn_32, CvType.CV_32F);
+
+            List<Point2D> firstPts = new ArrayList<>();
+            List<Point2D> currPts = new ArrayList<>();
+            List<String> newNames = new ArrayList<>();
+
+            for (Point2D pt : proc.getActiveImagePoints()) {
+                if (!cloudMap.containsKey(pt.getName())) {
+                    for (Point2D p0 : common1) {  // common1 из начала метода
+                        if (p0.getName().equals(pt.getName())) {
+                            firstPts.add(p0);
+                            currPts.add(pt);
+                            newNames.add(pt.getName());
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (firstPts.size() >= 4) {
+                MatOfPoint2f fp32 = new MatOfPoint2f();
+                MatOfPoint2f cp32 = new MatOfPoint2f();
+                mat2f(firstPts).convertTo(fp32, CvType.CV_32F);
+                mat2f(currPts).convertTo(cp32, CvType.CV_32F);
+
+                Mat new4d = new Mat();
+                Calib3d.triangulatePoints(
+                        P1_32,
+                        Pn_32,
+                        fp32,
+                        cp32,
+                        new4d
                 );
 
-                // 5) Считаем inlier-точки
-                int inliers = Core.countNonZero(mask);
-                if (inliers > best.getCor()) {
-                    best.setCor(inliers);
-                    best.setImage1(keyA);
-                    best.setImage2(keyB);
+                for (int i = 0; i < new4d.cols(); i++) {
+                    double w4 = new4d.get(3, i)[0];
+                    double x = new4d.get(0, i)[0] / w4;
+                    double y = new4d.get(1, i)[0] / w4;
+                    double z = new4d.get(2, i)[0] / w4;
+
+                    String nm = newNames.get(i);
+                    Point3D p3 = new Point3D(nm, x, y, z);
+                    cloudMap.put(nm, p3);
+                    debugPoints.add(new Point3(x, y, z));
+                }
+            }
+        }
+
+        return new ArrayList<>(cloudMap.values());
+    }
+
+    private static ImagePair findBestPair(ImageProcessor proc) {
+        ImagePair best = new ImagePair();
+        List<String> keys = Collections.list(proc.getImagesModel().elements());
+        int maxMatches = 0;
+
+        for (int i = 0; i < keys.size() - 1; i++) {
+            proc.setActiveImage(keys.get(i));
+            Set<String> A = proc.getActiveImagePoints().stream()
+                    .map(Point2D::getName)
+                    .collect(Collectors.toSet());
+
+            for (int j = i + 1; j < keys.size(); j++) {
+                proc.setActiveImage(keys.get(j));
+                Set<String> B = proc.getActiveImagePoints().stream()
+                        .map(Point2D::getName)
+                        .collect(Collectors.toSet());
+
+                int count = 0;
+                for (String n : A) {
+                    if (B.contains(n)) count++;
+                }
+
+                if (count > maxMatches) {
+                    maxMatches = count;
+                    best.setImage1(keys.get(i));
+                    best.setImage2(keys.get(j));
+                    best.setCor(count);
                 }
             }
         }
 
         return best;
     }
-
-    public static List<Point3D> reconstructAll(ImageProcessor proc) {
-        // находим лучшую пару
-        ImagePair best = findBestPair5(proc);
-        if (best.getCor() < 5 || best.getImage1() == null) {
-            throw new RuntimeException("No valid initial image pair found");
-        }
-        String im1 = best.getImage1(), im2 = best.getImage2();
-        // получаем общие размеченные точки
-        proc.setActiveImage(im1);
-        List<Point2D> pts1 = proc.getActiveImagePoints();
-        proc.setActiveImage(im2);
-        List<Point2D> pts2 = proc.getActiveImagePoints();
-        Map<String,Point2D> map2 = pts2.stream()
-                .collect(Collectors.toMap(Point2D::getName, Function.identity()));
-        List<Point2D> common1 = new ArrayList<>(), common2 = new ArrayList<>();
-        for (Point2D p : pts1) {
-            Point2D q = map2.get(p.getName());
-            if (q != null) {
-                common1.add(p);
-                common2.add(q);
-            }
-        }
-        if (common1.size() < 5) {
-            throw new RuntimeException("Not enough correspondences to reconstruct");
-        }
-        // загружаем изображения и K
-        BufferedImage imgA = proc.getImage(im1).getBufferedImage();
-        BufferedImage imgB = proc.getImage(im2).getBufferedImage();
-        Mat KA = estimateCameraMatrix(imgA);
-        Mat KB = estimateCameraMatrix(imgB);
-        // нормализуем и найдем E
-        MatOfPoint2f m1 = MatOfPoints2fFromPointsList(common1);
-        MatOfPoint2f m2 = MatOfPoints2fFromPointsList(common2);
-        Mat mask = new Mat();
-        Mat E = Calib3d.findEssentialMat(m1, m2, KA, Calib3d.RANSAC, 0.99, 1.0, 1000, mask);
-        // восстанавливаем позы
-        Mat R = new Mat(), t = new Mat();
-        Calib3d.recoverPose(E, m1, m2, KA, R, t, mask);
-        // создаем проекции
-        Mat P1 = Mat.eye(3,4,CvType.CV_64F);
-        KA.copyTo(P1.colRange(0,3));
-        Mat Rt = new Mat(3,4,CvType.CV_64F);
-        R.copyTo(Rt.colRange(0,3));
-        t.copyTo(Rt.col(3));
-        Mat P2 = new Mat();
-        Core.gemm(KB, Rt, 1.0, Mat.zeros(3,4,CvType.CV_64F),0, P2);
-        // триангуляция
-        Mat points4D = new Mat();
-        Calib3d.triangulatePoints(P1, P2, m1, m2, points4D);
-        // преобразуем в List<Point3D>
-        List<Point3D> cloud = new ArrayList<>();
-        for (int i = 0; i < points4D.cols(); i++) {
-            double w4 = points4D.get(3,i)[0];
-            double x = points4D.get(0,i)[0]/w4;
-            double y = points4D.get(1,i)[0]/w4;
-            double z = points4D.get(2,i)[0]/w4;
-            String id = common1.get(i).getName();
-            cloud.add(new Point3D(id, x, y, z));
-        }
-        return cloud;
-    }
-
-    //    private static List<Point3D> reconstructAll(ImageProcessor processor){
-    //        //...
-    //    }
-
 }
 
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-class ImagePair{
+class ImagePair {
     private String image1;
     private String image2;
-    private int cor = 0;
+    private int cor;
 }
