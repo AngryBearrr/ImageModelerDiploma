@@ -15,37 +15,33 @@ import java.awt.image.BufferedImage;
 import java.io.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
-/**
- * Main application window:
- * - Image tab: display images, add points, select points
- * - Solve tab: build 3D cloud, scale, configure via control panel
- */
 public class MainFrame extends JFrame {
     private ImageProcessor processor = new ImageProcessor();
-    private PointCloud3DPanel cloudPanel;      // панель для облака точек
-    private String fileSavePath = null;
+    private PointCloud3DPanel cloudPanel;
+    private SFMControlPanel   controlPanel;
+    private String            fileSavePath = null;
+
     private final CardLayout cardLayout = new CardLayout();
-    private final JPanel mainPanel = new JPanel(cardLayout);
+    private final JPanel     mainPanel  = new JPanel(cardLayout);
     private final ImagePanel imagePanel = new ImagePanel(processor);
 
-    private final JList<String> pointsList = new JList<>(processor.getPointsModel());
     private final JList<String> imagesList = new JList<>(processor.getImagesModel());
-
+    private final JList<String> pointsList = new JList<>(processor.getPointsModel());
     private final MouseClickLogic clickLogic = new MouseClickLogic(processor, imagePanel);
 
     public MainFrame() {
         super("SfM Reconstruction Tool");
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setSize(1600, 900);
+        setLocationRelativeTo(null);
+
         imagesList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         imagesList.addListSelectionListener(
                 UiLogicHandler.changeActiveImage(processor, imagePanel, imagesList)
         );
-        setDefaultCloseOperation(EXIT_ON_CLOSE);
-        setSize(1600, 900);
-        setLocationRelativeTo(null);
+
         buildUI();
     }
 
@@ -53,6 +49,7 @@ public class MainFrame extends JFrame {
         setLayout(new BorderLayout());
         add(createToolbar(), BorderLayout.NORTH);
         add(mainPanel, BorderLayout.CENTER);
+
         mainPanel.add(createImageTab(), "images");
         mainPanel.add(createSolveTab(), "solve");
         cardLayout.show(mainPanel, "images");
@@ -63,9 +60,9 @@ public class MainFrame extends JFrame {
         MyButton fileBtn = toolbar.addNavButton("File");
         fileBtn.addActionListener(e ->
                 new FileDropdownMenu(
-                        save  -> this.save(),
-                        saveAs -> this.saveAs(),
-                        open  -> this.open()
+                        e2 -> this.save(),
+                        e2 -> this.saveAs(),
+                        e2 -> this.open()
                 ).show(fileBtn, 0, fileBtn.getHeight())
         );
         toolbar.addNavButton("Images", e -> cardLayout.show(mainPanel, "images"));
@@ -86,40 +83,58 @@ public class MainFrame extends JFrame {
         MyPanel solvePanel = new MyPanel(new BorderLayout(), 10);
         solvePanel.setBackground(Palette.DARKEST_GREY);
 
-        // Toolbar with Build, Scale, Configure
+        // Top toolbar
         MyToolbar toolbar = new MyToolbar();
-        MyButton buildBtn    = new MyButton("Build Solution");
-        MyButton scaleBtn    = new MyButton("Scale");
-        MyButton configBtn   = new MyButton("Configure Cloud");
+        MyButton buildBtn = new MyButton("Build Solution");
+        MyButton scaleBtn = new MyButton("Scale");
         toolbar.add(buildBtn);
-        toolbar.addSeparator(new Dimension(5, 0));
+        toolbar.addSeparator(new Dimension(5,0));
         toolbar.add(scaleBtn);
-        toolbar.addSeparator(new Dimension(5, 0));
-        toolbar.add(configBtn);
         solvePanel.add(toolbar, BorderLayout.NORTH);
 
-        // Container for 3D view
+        // 3D view container
         JPanel viewContainer = new JPanel(new BorderLayout());
         viewContainer.setBackground(Palette.DARK_GREY);
         solvePanel.add(viewContainer, BorderLayout.CENTER);
+
+        // Placeholder for side panel
+        Component placeholder = Box.createRigidArea(new Dimension(300,0));
+        solvePanel.add(placeholder, BorderLayout.EAST);
 
         // Build action
         buildBtn.addActionListener(e -> {
             try {
                 List<Point3D> cloud = OpenCVSFMConstructor.reconstructAll(processor);
+
+                // Create or update 3D view
+                if (cloudPanel == null) cloudPanel = new PointCloud3DPanel(cloud);
+                else cloudPanel.updatePoints(cloud);
                 viewContainer.removeAll();
-                cloudPanel = new PointCloud3DPanel(cloud);
                 viewContainer.add(cloudPanel, BorderLayout.CENTER);
-                viewContainer.revalidate();
-                viewContainer.repaint();
+
+                // Create control panel
+                if (controlPanel != null) solvePanel.remove(controlPanel);
+                controlPanel = new SFMControlPanel(cloud);
+                controlPanel.setOnTransform(() -> {
+                    List<Point3D> updated = OpenCVSFMConstructor.reconstructAll(processor);
+                    cloudPanel.updatePoints(updated);
+                });
+                controlPanel.getPointList().addListSelectionListener(evt -> {
+                    if (!evt.getValueIsAdjusting()) {
+                        int idx = controlPanel.getPointList().getSelectedIndex();
+                        cloudPanel.setActiveIndex(idx);
+                    }
+                });
+
+                solvePanel.remove(placeholder);
+                solvePanel.add(controlPanel, BorderLayout.EAST);
+
+                solvePanel.revalidate();
+                solvePanel.repaint();
             } catch (RuntimeException ex) {
-                String msg = ex.getMessage().contains("стартовой пары")
-                        ? "Не удалось найти пару изображений с достаточным числом общих точек.\n" +
-                        "Отметьте хотя бы 5 совпадающих точек на двух изображениях."
-                        : ex.getMessage();
                 JOptionPane.showMessageDialog(
                         MainFrame.this,
-                        msg,
+                        ex.getMessage(),
                         "Ошибка реконструкции",
                         JOptionPane.ERROR_MESSAGE
                 );
@@ -149,37 +164,12 @@ public class MainFrame extends JFrame {
             }
         });
 
-        // Configure Cloud action: opens control panel dialog
-        configBtn.addActionListener(evt -> {
-            if (cloudPanel == null) {
-                JOptionPane.showMessageDialog(
-                        MainFrame.this,
-                        "Сначала постройте облако точек (Build Solution).",
-                        "Нет данных",
-                        JOptionPane.WARNING_MESSAGE
-                );
-                return;
-            }
-            // Retrieve current 3D points
-            List<Point3D> pts = cloudPanel.getPoints();
-            // Build control panel
-            SFMControlPanel ctrl = new SFMControlPanel(pts);
-            // Show in modal dialog
-            JDialog dialog = new JDialog(MainFrame.this, "Configure Point Cloud", true);
-            dialog.getContentPane().add(ctrl);
-            dialog.pack();
-            dialog.setLocationRelativeTo(MainFrame.this);
-            dialog.setVisible(true);
-            // After closing, re-render cloud with updated transform
-            cloudPanel.updatePoints(OpenCVSFMConstructor.reconstructAll(processor));
-        });
-
         return solvePanel;
     }
 
     private JPanel createSidePanel() {
-        JPanel container = new JPanel(new GridLayout(2, 1, 0, 0));
-        container.setPreferredSize(new Dimension(300, 0));
+        JPanel container = new JPanel(new GridLayout(2,1));
+        container.setPreferredSize(new Dimension(300,0));
         container.add(createListPanel(
                 imagesList,
                 e -> UiLogicHandler.addImage(this, processor, imagePanel),
@@ -209,14 +199,13 @@ public class MainFrame extends JFrame {
 
         addBtn.addActionListener(onAdd);
         MyToolbar toolbar = new MyToolbar();
-        toolbar.setLayout(new BorderLayout(5, 0));
+        toolbar.setLayout(new BorderLayout(5,0));
         toolbar.add(addBtn, BorderLayout.EAST);
         toolbar.setBorder(BorderFactory.createEmptyBorder(6,6,6,6));
         toolbar.setFloatable(false);
-        ImageIcon scaledIcon = new ImageIcon(
-                icon.getImage().getScaledInstance(24, 24, Image.SCALE_SMOOTH)
-        );
-        toolbar.add(new JLabel(scaledIcon), BorderLayout.WEST);
+        toolbar.add(new JLabel(new ImageIcon(
+                icon.getImage().getScaledInstance(24,24,Image.SCALE_SMOOTH)
+        )), BorderLayout.WEST);
 
         panel.add(toolbar, BorderLayout.NORTH);
         JScrollPane scroll = new JScrollPane(list);
@@ -228,18 +217,27 @@ public class MainFrame extends JFrame {
         return panel;
     }
 
-    // File operations: open, save, saveAs
+    // --- File operations: open, save, saveAs, serialize, loadDefaultImage ---
+
     private void open() {
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Open file");
         if (chooser.showDialog(this, "Open") == JFileChooser.APPROVE_OPTION) {
-            getSerializedProcessor(chooser.getSelectedFile().getAbsolutePath());
-            imagesList.setModel(processor.getImagesModel());
-            pointsList.setModel(processor.getPointsModel());
-            if (processor.activeImageExists()) {
-                imagesList.setSelectedValue(processor.getActiveImagePath(), true);
-            } else if (processor.getImagesModel().getSize() > 0) {
-                imagesList.setSelectedIndex(0);
+            String path = chooser.getSelectedFile().getAbsolutePath();
+            try {
+                ImageProcessor loaded = ImageProcessor.load(path);
+                this.processor.replaceWith(loaded);
+                imagesList.setModel(processor.getImagesModel());
+                pointsList.setModel(processor.getPointsModel());
+                if (processor.activeImageExists()) {
+                    imagesList.setSelectedValue(processor.getActiveImagePath(), true);
+                } else if (processor.getImagesModel().getSize() > 0) {
+                    imagesList.setSelectedIndex(0);
+                }
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this,
+                        "Failed to load: " + ex.getMessage(),
+                        "Error", JOptionPane.ERROR_MESSAGE);
             }
         }
     }
@@ -263,17 +261,6 @@ public class MainFrame extends JFrame {
         }
     }
 
-    private void getSerializedProcessor(String filePath) {
-        try {
-            ImageProcessor loaded = ImageProcessor.load(filePath);
-            this.processor.replaceWith(loaded);
-        } catch (Exception e) {
-            JOptionPane.showMessageDialog(this,
-                    "Failed to load model: " + e.getMessage(),
-                    "Error", JOptionPane.ERROR_MESSAGE);
-        }
-    }
-
     private void serializeProcessor() {
         if (fileSavePath == null) return;
         try (ObjectOutputStream oos = new ObjectOutputStream(
@@ -290,7 +277,7 @@ public class MainFrame extends JFrame {
         try {
             return ImageIO.read(path.toFile());
         } catch (IOException e) {
-            return new BufferedImage(600, 600, BufferedImage.TYPE_INT_ARGB);
+            return new BufferedImage(600,600,BufferedImage.TYPE_INT_ARGB);
         }
     }
 }

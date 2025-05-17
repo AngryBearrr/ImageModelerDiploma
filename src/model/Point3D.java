@@ -31,6 +31,6 @@ public class Point3D extends NamedPoint {
 
     @Override
     public String toString() {
-        return String.format("Point3D{name='%s', x=%.6f, y=%.6f, z=%.6f}", getName(), x, y, z);
+        return this.getName();
     }
 }

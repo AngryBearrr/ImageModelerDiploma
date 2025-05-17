@@ -97,32 +97,39 @@ class MyPanel extends JPanel{
     }
 }
 
-class MyListCellRenderer implements ListCellRenderer<String> {
+class MyListCellRenderer implements ListCellRenderer<Object> {
     private final Color evenColor = Palette.DARK_GREY;
     private final Color oddColor  = Palette.DARKEST_GREY;
 
     @Override
-    public Component getListCellRendererComponent(JList<? extends String> list,
-                                                  String value,
+    public Component getListCellRendererComponent(JList<?> list,
+                                                  Object value,
                                                   int index,
                                                   boolean isSelected,
                                                   boolean cellHasFocus) {
         JPanel panel = new JPanel(new BorderLayout(0, 0));
         panel.setOpaque(true);
 
+        // фон: selected или чередующийся
         if (isSelected) {
             panel.setBackground(list.getSelectionBackground());
         } else {
             panel.setBackground((index % 2 == 0) ? evenColor : oddColor);
         }
 
-        JLabel textLabel = new JLabel(value);
+        // текстовое значение
+        String text = (value == null ? "" : value.toString());
+        JLabel textLabel = new JLabel(text);
         textLabel.setOpaque(false);
         textLabel.setBorder(BorderFactory.createEmptyBorder(6,6,6,6));
-        textLabel.setForeground(isSelected ? list.getSelectionForeground() : list.getForeground());
+        textLabel.setForeground(isSelected
+                ? list.getSelectionForeground()
+                : list.getForeground());
         panel.add(textLabel, BorderLayout.WEST);
 
-        Icon circleIcon = new CircleIcon(getColorForIndex(index), 16);
+        // иконка-кружок справа
+        Color circleColor = getColorForIndex(index);
+        Icon circleIcon = new CircleIcon(circleColor, 16);
         JLabel iconLabel = new JLabel(circleIcon);
         iconLabel.setBorder(BorderFactory.createEmptyBorder(6,6,6,6));
         iconLabel.setOpaque(false);
@@ -131,8 +138,12 @@ class MyListCellRenderer implements ListCellRenderer<String> {
         return panel;
     }
 
+    /**
+     * Здесь можно определить логику выбора цвета кружка по индексу
+     * или даже по самому элементу (через list.getModel().getElementAt(index)).
+     */
     private Color getColorForIndex(int index) {
-        // ваша логика: по индексу выбираем цвет состояния
+        // простая заглушка — все красные
         return Color.RED;
     }
 }
