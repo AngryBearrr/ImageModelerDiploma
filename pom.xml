@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation=
-                 "http://maven.apache.org/POM/4.0.0
-            http://maven.apache.org/xsd/maven-4.0.0.xsd">
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
     <modelVersion>4.0.0</modelVersion>
     <groupId>ImageModeler</groupId>
     <artifactId>MyImageModeler</artifactId>
@@ -11,17 +10,41 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <javacpp.version>1.5.11</javacpp.version>
         <java.version>18</java.version>
+        <javacpp.version>1.5.11</javacpp.version>
+        <maven.compiler.source>${java.version}</maven.compiler.source>
+        <maven.compiler.target>${java.version}</maven.compiler.target>
     </properties>
 
+    <!-- Явно указываем центральный репозиторий -->
+    <repositories>
+        <repository>
+            <id>central</id>
+            <url>https://repo.maven.apache.org/maven2</url>
+        </repository>
+    </repositories>
+
     <dependencies>
-        <!-- JavaCV со всеми нативными библиотеками включая OpenCV + contrib/SFM -->
+        <!-- JavaCV (включая OpenCV + Contrib/SFM) -->
         <dependency>
             <groupId>org.bytedeco</groupId>
             <artifactId>javacv-platform</artifactId>
             <version>${javacpp.version}</version>
         </dependency>
+
+        <!-- Apache Commons Math -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-math3</artifactId>
+            <version>3.6.1</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+            <version>3.12.0</version> <!-- Replace with the latest version -->
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>
@@ -29,25 +52,29 @@
             <version>1.18.38</version>
             <scope>provided</scope>
         </dependency>
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-math3</artifactId>
-            <version>3.6.1</version>
-        </dependency>
     </dependencies>
 
     <build>
         <plugins>
-            <!-- Для Java 18 -->
+            <!-- Maven Compiler Plugin + Lombok Annotation Processor -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.10.1</version>
                 <configuration>
-                    <source>${java.version}</source>
-                    <target>${java.version}</target>
+                    <source>${maven.compiler.source}</source>
+                    <target>${maven.compiler.target}</target>
+                    <encoding>${project.build.sourceEncoding}</encoding>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>1.18.38</version>
+                        </path>
+                    </annotationProcessorPaths>
                 </configuration>
             </plugin>
         </plugins>
     </build>
+
 </project>
