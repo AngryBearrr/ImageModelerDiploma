@@ -4,17 +4,21 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.opencv.calib3d.Calib3d;
-import org.opencv.core.*;
+import org.opencv.core.Core;
+import org.opencv.core.CvType;
+import org.opencv.core.Mat;
+import org.opencv.core.MatOfPoint2f;
+import org.opencv.core.Point;
 
 import java.awt.image.BufferedImage;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import java.util.Arrays;
 
 /**
- * OpenCVSFMConstructor — Incremental SFM pipeline
- * with optional Bundle Adjustment (skipped if insufficient matches).
+ * OpenCVSFMConstructor — Incremental SfM pipeline
+ * with optional Bundle Adjustment and global point-cloud transforms.
+ * All configuration and methods are static.
  */
 public class OpenCVSFMConstructor {
     static {
@@ -22,9 +26,27 @@ public class OpenCVSFMConstructor {
         System.load("E:\\OpenCV\\opencv\\build\\java\\x64\\opencv_java4110.dll");
     }
 
+    // Static fields for global transform (applied after reconstruction)
+    private static Mat globalR = Mat.eye(3, 3, CvType.CV_64F);
+    private static Mat globalT = Mat.zeros(3, 1, CvType.CV_64F);
+
     /**
-     * Reconstructs a 3D point cloud from the best pair of images.
-     * Bundle Adjustment is applied only if there are enough matches.
+     * Set a global rotation to be applied to the reconstructed point-cloud.
+     */
+    public static void setGlobalRotation(Mat R) {
+        globalR = R;
+    }
+
+    /**
+     * Set a global translation to be applied to the reconstructed point-cloud.
+     */
+    public static void setGlobalTranslation(Mat t) {
+        globalT = t;
+    }
+
+    /**
+     * Perform SfM on the best image pair, optionally run BA,
+     * then apply global transform.
      */
     public static List<Point3D> reconstructAll(ImageProcessor proc) {
         // 1) Select best image pair
@@ -92,7 +114,7 @@ public class OpenCVSFMConstructor {
         int N = cloudMap.size();
         int minMatches = (int)Math.floor((6.0 * C) / (2.0 * C - 3.0)) + 1;
         if (N < minMatches) {
-            // Return the unadjusted point cloud
+            applyGlobalTransform(cloudMap);
             return new ArrayList<>(cloudMap.values());
         }
 
@@ -103,7 +125,6 @@ public class OpenCVSFMConstructor {
         List<Mat> Ts = Arrays.asList(zero, t);
         List<List<Point2D>> observations = Arrays.asList(common1, common2);
         List<List<String>> obsNames = Arrays.asList(names, names);
-
         BundleAdjuster ba = new BundleAdjuster(
                 cloudMap, Rs, Ts,
                 observations, obsNames,
@@ -112,8 +133,29 @@ public class OpenCVSFMConstructor {
         ba.optimize();
         ba.updateCloudMap(cloudMap);
 
+        // 7) Apply the global transform and return
+        applyGlobalTransform(cloudMap);
         return new ArrayList<>(cloudMap.values());
     }
+
+    /**
+     * Applies the global rotation and translation to each point.
+     */
+    private static void applyGlobalTransform(Map<String, Point3D> cloudMap) {
+        for (Map.Entry<String, Point3D> e : cloudMap.entrySet()) {
+            Point3D p = e.getValue();
+            Mat vec = new Mat(3,1,CvType.CV_64F);
+            vec.put(0,0, p.getX(), p.getY(), p.getZ());
+            Mat rotated = new Mat();
+            Core.gemm(globalR, vec, 1.0, new Mat(), 0.0, rotated);
+            double rx = rotated.get(0,0)[0] + globalT.get(0,0)[0];
+            double ry = rotated.get(1,0)[0] + globalT.get(1,0)[0];
+            double rz = rotated.get(2,0)[0] + globalT.get(2,0)[0];
+            e.setValue(new Point3D(e.getKey(), rx, ry, rz));
+        }
+    }
+
+    // Helper methods:
 
     private static Mat estimateCameraMatrix(BufferedImage img) {
         int w = img.getWidth(), h = img.getHeight();
