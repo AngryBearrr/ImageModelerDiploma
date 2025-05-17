@@ -81,23 +81,18 @@ public class MainFrame extends JFrame {
     }
 
     private JPanel createSolveTab() {
-        // Используем ваш MyPanel для отступов
         MyPanel solvePanel = new MyPanel(new BorderLayout(), 10);
         solvePanel.setBackground(Palette.DARKEST_GREY);
 
-        // Сверху тулбар, как везде
         MyToolbar toolbar = new MyToolbar();
-        // Кнопка в стиле остальных навигационных
         MyButton buildBtn = new MyButton("Build Solution");
         toolbar.add(buildBtn);
         solvePanel.add(toolbar, BorderLayout.NORTH);
 
-        // Контейнер, куда вставится 3D-вид
         JPanel viewContainer = new JPanel(new BorderLayout());
         viewContainer.setBackground(Palette.DARK_GREY);
         solvePanel.add(viewContainer, BorderLayout.CENTER);
 
-        // Логика нажатия
         buildBtn.addActionListener(e -> {
             try {
                 List<Point3D> cloud = ColmapSFMConstructor.reconstructAll(processor);
@@ -175,14 +170,22 @@ public class MainFrame extends JFrame {
     private JPanel createSidePanel() {
         JPanel container = new JPanel(new GridLayout(2, 1, 0, 0));
         container.setPreferredSize(new Dimension(300, 0));
+        // Images list panel
         container.add(createListPanel(
                 imagesList,
                 e -> UiLogicHandler.addImage(this, processor, imagePanel),
                 new ImageIcon(getClass().getResource("/resources/imageIcon.png"))
         ));
+        // Points list panel with model refresh
         container.add(createListPanel(
                 pointsList,
-                e -> UiLogicHandler.addPoint(this, processor, imagePanel),
+                e -> {
+                    UiLogicHandler.addPoint(this, processor, imagePanel);
+                    // Обновляем модель списка после добавления точки
+                    pointsList.setModel(processor.getPointsModel());
+                    pointsList.revalidate();
+                    pointsList.repaint();
+                },
                 new ImageIcon(getClass().getResource("/resources/pointIcon.png"))
         ));
         return container;
