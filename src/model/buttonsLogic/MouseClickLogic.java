@@ -2,7 +2,7 @@ package model.buttonsLogic;
 
 import model.ImageProcessor;
 import model.Point2D;
-import ui.ImagePanel;
+import ui.uiComponents.ImagePanel;
 
 import javax.swing.*;
 import java.awt.*;

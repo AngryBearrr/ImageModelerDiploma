@@ -2,8 +2,8 @@ package model.buttonsLogic;
 
 import model.ImageProcessor;
 import model.Point2D;
-import ui.ImagePanel;
-import ui.MainFrame;
+import ui.uiComponents.ImagePanel;
+import ui.mainWindow.MainFrame;
 
 import javax.swing.*;
 import java.awt.image.BufferedImage;

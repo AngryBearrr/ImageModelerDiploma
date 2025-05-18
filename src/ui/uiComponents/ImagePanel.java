@@ -1,8 +1,9 @@
 // src/ui/ImagePanel.java
-package ui;
+package ui.uiComponents;
 
 import model.ImageProcessor;
 import model.Point2D;
+import ui.theme.Palette;
 
 import javax.swing.*;
 import java.awt.*;
