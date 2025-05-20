@@ -20,9 +20,9 @@ import java.util.List;
 
 public class MainFrame extends JFrame {
     private final ImageProcessor processor = new ImageProcessor();
-    private PointCloud3DPanel     cloudPanel;
-    private SFMControlPanel       controlPanel;
-    private String                fileSavePath;
+    private PointCloud3DPanel cloudPanel;
+    private SFMControlPanel controlPanel;
+    private String fileSavePath;
 
     private final CardLayout cardLayout = new CardLayout();
     private final JPanel     mainPanel  = new JPanel(cardLayout);
@@ -130,8 +130,7 @@ public class MainFrame extends JFrame {
                 if (controlPanel != null) solve.remove(controlPanel);
                 controlPanel = new SFMControlPanel(cloud);
                 controlPanel.setOnTransform(() -> {
-                    List<Point3D> upd = OpenCVSFMConstructor.reconstructAll(processor);
-                    cloudPanel.updatePoints(upd);
+                    cloudPanel.updatePoints(controlPanel.getTransformedPoints());
                 });
                 controlPanel.getPointList().addListSelectionListener(evt -> {
                     if (!evt.getValueIsAdjusting()) {

@@ -58,6 +58,7 @@
             <artifactId>flatlaf</artifactId>
             <version>3.1</version>  <!-- or whatever the latest version is -->
         </dependency>
+
     </dependencies>
 
     <build>
