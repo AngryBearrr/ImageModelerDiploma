@@ -18,8 +18,8 @@ import java.util.*;
  */
 public class BundleAdjuster {
     // Параметры оптимизации (можно менять здесь)
-    private int MAX_EVALUATIONS = 200;
-    private int MAX_ITERATIONS  = 200;
+    private int MAX_EVALUATIONS = 5000;
+    private int MAX_ITERATIONS  = 5000;
 
     private final List<String> ptNames;
     private final List<Mat> Rs;
@@ -29,9 +29,6 @@ public class BundleAdjuster {
     private final Mat K;
     private double[] params;
 
-    public static final String ANSI_GREEN  = "\u001B[32m";
-    public static final String ANSI_RESET  = "\u001B[0m";
-
     public BundleAdjuster(Map<String, Point3D> points,
                           List<Mat> Rs,
                           List<Mat> Ts,
@@ -40,15 +37,15 @@ public class BundleAdjuster {
                           Mat K,
                           int maxEv,
                           int maxIt) {
-        this.ptNames = new ArrayList<>(points.keySet());
-        this.Rs = Rs;
-        this.Ts = Ts;
-        this.obs = obs;
+        this.ptNames  = new ArrayList<>(points.keySet());
+        this.Rs       = Rs;
+        this.Ts       = Ts;
+        this.obs      = obs;
         this.obsNames = obsNames;
-        this.K = K;
+        this.K        = K;
         initParams(points);
-        this.MAX_EVALUATIONS = maxEv;
-        this.MAX_ITERATIONS = maxIt;
+        this.MAX_ITERATIONS=maxIt;
+        this.MAX_EVALUATIONS=maxEv;
     }
 
     private void initParams(Map<String, Point3D> map) {
@@ -104,7 +101,6 @@ public class BundleAdjuster {
         try {
             LeastSquaresOptimizer.Optimum optimum = optimizer.optimize(problem);
             params = optimum.getPoint().toArray();
-            System.out.println(ANSI_GREEN + "Image added successfully" + ANSI_RESET);
         } catch (MaxCountExceededException ex) {
             System.err.println("Bundle adjustment не сошёлся: превысили " + MAX_EVALUATIONS + " оценок");
         }
