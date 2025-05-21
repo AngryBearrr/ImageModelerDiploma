@@ -2,6 +2,7 @@ package model;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.opencv.calib3d.Calib3d;
 import org.opencv.core.*;
@@ -71,7 +72,7 @@ public class OpenCVSFMConstructor {
         }
 
         // 3) Находим лучшую первичную пару
-        ImagePair bestPair = findBestPair(proc, allImages, pointsByImage);
+        ImagePair bestPair = findBestPair(allImages, pointsByImage);
         System.out.println("Best pair: " + bestPair.getImage1() + " <-> " + bestPair.getImage2() +
                 " with " + bestPair.getCor() + " correspondences");
 
@@ -682,7 +683,7 @@ public class OpenCVSFMConstructor {
         return P;
     }
 
-    private static ImagePair findBestPair(ImageProcessor proc, List<String> images,
+    private static ImagePair findBestPair(List<String> images,
                                           Map<String, Map<String, Point2D>> pointsByImage) {
         ImagePair best = new ImagePair();
         int max = 0;
@@ -730,7 +731,7 @@ public class OpenCVSFMConstructor {
             // Собираем список камер, где точка видна:
             List<String> views = cameras.stream()
                     .filter(cam -> pointsByImage.get(cam).containsKey(pointName))
-                    .collect(Collectors.toList());
+                    .toList();
             if (views.size() < 2) continue;
 
             Point3D bestP = null;
@@ -824,9 +825,11 @@ class ImageScore {
  * Represents the current state of the reconstruction
  */
 class Reconstruction {
+    @Getter
     private final Mat K; // Camera intrinsic matrix
     private final Map<String, Mat> cameraRotations; // R for each camera
     private final Map<String, Mat> cameraTranslations; // t for each camera
+    @Getter
     private final Map<String, Point3D> pointCloud; // 3D points in the reconstruction
     private final Map<String, Map<String, Point2D>> observations; // point -> camera -> observation
 
@@ -836,14 +839,6 @@ class Reconstruction {
         this.cameraTranslations = new HashMap<>();
         this.pointCloud = new LinkedHashMap<>();
         this.observations = new HashMap<>();
-    }
-
-    public Mat getK() {
-        return K;
-    }
-
-    public Map<String, Point3D> getPointCloud() {
-        return pointCloud;
     }
 
     public void addCamera(String cameraName, Mat R, Mat t) {
